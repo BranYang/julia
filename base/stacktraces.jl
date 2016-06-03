@@ -4,7 +4,7 @@ module StackTraces
 
 
 import Base: hash, ==, show
-import Base.Serializer: serialize, deserialize
+import Base.Serialization: serialize, deserialize
 
 export StackTrace, StackFrame, stacktrace, catch_stacktrace
 
@@ -63,8 +63,8 @@ end
 # provide a custom serializer that skips attempting to serialize the `outer_linfo`
 # which is likely to contain complex references, types, and module references
 # that may not exist on the receiver end
-function serialize(s::SerializationState, frame::StackFrame)
-    Serializer.serialize_type(s, typeof(frame))
+function serialize(s::AbstractSerializer, frame::StackFrame)
+    Serialization.serialize_type(s, typeof(frame))
     serialize(s, frame.func)
     serialize(s, frame.file)
     write(s.io, frame.line)
@@ -73,7 +73,7 @@ function serialize(s::SerializationState, frame::StackFrame)
     write(s.io, frame.pointer)
 end
 
-function deserialize(s::SerializationState, ::Type{StackFrame})
+function deserialize(s::AbstractSerializer, ::Type{StackFrame})
     func = deserialize(s)
     file = deserialize(s)
     line = read(s.io, Int)

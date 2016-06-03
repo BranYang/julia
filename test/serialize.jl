@@ -15,20 +15,20 @@ end
 
 # Tags
 create_serialization_stream() do s
-    Serializer.writetag(s, Serializer.sertag(Bool))
-    @test takebuf_array(s)[end] == UInt8(Serializer.sertag(Bool))
+    Serialization.writetag(s, Serialization.sertag(Bool))
+    @test takebuf_array(s)[end] == UInt8(Serialization.sertag(Bool))
 end
 
 create_serialization_stream() do s
-    Serializer.write_as_tag(s, Serializer.sertag(Bool))
-    @test takebuf_array(s)[end] == UInt8(Serializer.sertag(Bool))
+    Serialization.write_as_tag(s, Serialization.sertag(Bool))
+    @test takebuf_array(s)[end] == UInt8(Serialization.sertag(Bool))
 end
 
 create_serialization_stream() do s
-    Serializer.write_as_tag(s, Serializer.sertag(Symbol))
+    Serialization.write_as_tag(s, Serialization.sertag(Symbol))
     data = takebuf_array(s)
     @test data[end-1] == 0x00
-    @test data[end] == UInt8(Serializer.sertag(Symbol))
+    @test data[end] == UInt8(Serialization.sertag(Symbol))
 end
 
 # Boolean & Empty & Nothing

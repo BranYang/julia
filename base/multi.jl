@@ -704,29 +704,29 @@ end
 
 channel_type{T}(rr::RemoteChannel{T}) = T
 
-serialize(s::SerializationState, f::Future) = serialize(s, f, isnull(f.v))
-serialize(s::SerializationState, rr::RemoteChannel) = serialize(s, rr, true)
-function serialize(s::SerializationState, rr::AbstractRemoteRef, addclient)
+serialize(s::AbstractSerializer, f::Future) = serialize(s, f, isnull(f.v))
+serialize(s::AbstractSerializer, rr::RemoteChannel) = serialize(s, rr, true)
+function serialize(s::AbstractSerializer, rr::AbstractRemoteRef, addclient)
     if addclient
         p = worker_id_from_socket(s.io)
         (p !== rr.where) && send_add_client(rr, p)
     end
-    invoke(serialize, Tuple{SerializationState, Any}, s, rr)
+    invoke(serialize, Tuple{AbstractSerializer, Any}, s, rr)
 end
 
-function deserialize{T<:Future}(s::SerializationState, t::Type{T})
+function deserialize{T<:Future}(s::AbstractSerializer, t::Type{T})
     f = deserialize_rr(s,t)
     Future(f.where, RRID(f.whence, f.id), f.v) # ctor adds to client_refs table
 end
 
-function deserialize{T<:RemoteChannel}(s::SerializationState, t::Type{T})
+function deserialize{T<:RemoteChannel}(s::AbstractSerializer, t::Type{T})
     rr = deserialize_rr(s,t)
     # call ctor to make sure this rr gets added to the client_refs table
     RemoteChannel{channel_type(rr)}(rr.where, RRID(rr.whence, rr.id))
 end
 
 function deserialize_rr(s, t)
-    rr = invoke(deserialize, Tuple{SerializationState, DataType}, s, t)
+    rr = invoke(deserialize, Tuple{AbstractSerializer, DataType}, s, t)
     if rr.where == myid()
         # send_add_client() is not executed when the ref is being
         # serialized to where it exists

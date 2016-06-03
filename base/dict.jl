@@ -403,16 +403,17 @@ copy(o::ObjectIdDict) = ObjectIdDict(o)
 
 get!(o::ObjectIdDict, key, default) = (o[key] = get(o, key, default))
 
-# SerializationState type needed as soon as ObjectIdDict is available
+abstract AbstractSerializer
 
-type SerializationState{I<:IO}
+# Serializer type needed as soon as ObjectIdDict is available
+type Serializer{I<:IO} <: AbstractSerializer
     io::I
     counter::Int
     table::ObjectIdDict
-    SerializationState(io::I) = new(io, 0, ObjectIdDict())
+    Serializer(io::I) = new(io, 0, ObjectIdDict())
 end
 
-SerializationState(io::IO) = SerializationState{typeof(io)}(io)
+Serializer(io::IO) = Serializer{typeof(io)}(io)
 
 # dict
 
