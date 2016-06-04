@@ -3,9 +3,9 @@
 using Base.Test
 
 # Check that serializer hasn't gone out-of-frame
-@test Serializer.sertag(Symbol) == 2
-@test Serializer.sertag(()) == 46
-@test Serializer.sertag(false) == 122
+@test Serialization.sertag(Symbol) == 2
+@test Serialization.sertag(()) == 46
+@test Serialization.sertag(false) == 122
 
 function create_serialization_stream(f::Function)
     s = IOBuffer()

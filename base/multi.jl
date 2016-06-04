@@ -77,19 +77,6 @@ type JoinCompleteMsg <: AbstractMsg
     ospid::Int
 end
 
-type ClusterSerializer{I<:IO} <: AbstractSerializer
-    io::I
-    counter::Int
-    table::ObjectIdDict
-
-    sent_objects::Dict # used by serialize (track objects sent)
-    recd_objects::Dict # used by deserialize (object cache)
-
-    ClusterSerializer(io::I) = new(io, 0, ObjectIdDict(), Dict(), Dict())
-end
-ClusterSerializer(io::IO) = ClusterSerializer{typeof(io)}(io)
-
-
 function send_msg_unknown(s::IO, msg)
     error("attempt to send to unknown socket")
 end

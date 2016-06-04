@@ -390,12 +390,17 @@ function serialize(s::AbstractSerializer, g::GlobalRef)
     serialize(s, g.name)
 end
 
+
 function serialize(s::AbstractSerializer, t::TypeName)
     serialize_cycle(s, t) && return
     writetag(s.io, TYPENAME_TAG)
     write(s.io, object_number(t))
     serialize(s, t.name)
     serialize(s, t.module)
+    serialize_typename_body(s, t)
+end
+
+function serialize_typename_body(s::AbstractSerializer, t::TypeName)
     serialize(s, t.names)
     serialize(s, t.primary.super)
     serialize(s, t.primary.parameters)
@@ -737,6 +742,7 @@ end
 module __deserialized_types__
 end
 
+
 function deserialize(s::AbstractSerializer, ::Type{TypeName})
     number = read(s.io, UInt64)
     name = deserialize(s)
@@ -759,7 +765,13 @@ function deserialize(s::AbstractSerializer, ::Type{TypeName})
         makenew = true
     end
     deserialize_cycle(s, tn)
+    deserialize_typename_body(s, tn, number, name, mod, makenew, add_known_object)
+    return tn
+end
 
+add_known_object(t, number) = (known_object_data[number] = t)
+
+function deserialize_typename_body(s::AbstractSerializer, tn, number, name, mod, makenew, record_fn)
     names = deserialize(s)
     super = deserialize(s)
     parameters = deserialize(s)
@@ -774,7 +786,7 @@ function deserialize(s::AbstractSerializer, ::Type{TypeName})
         tn.primary = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Cint, Cint, Cint),
                            tn, super, parameters, names, types,
                            abstr, mutable, ninitialized)
-        known_object_data[number] = tn
+        record_fn(tn, number)
         ty = tn.primary
         ccall(:jl_set_const, Void, (Any, Any, Any), mod, name, ty)
         if !isdefined(ty,:instance)
@@ -802,8 +814,6 @@ function deserialize(s::AbstractSerializer, ::Type{TypeName})
             end
         end
     end
-
-    return tn
 end
 
 function deserialize_datatype(s::AbstractSerializer)
