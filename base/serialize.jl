@@ -2,7 +2,7 @@
 
 module Serialization
 
-import Base: GMP, Bottom, svec, unsafe_convert, uncompressed_ast
+import Base: GMP, Bottom, svec, unsafe_convert, uncompressed_ast, reset
 using Base: ViewIndex, index_lengths
 
 export serialize, deserialize
@@ -100,6 +100,12 @@ function serialize_cycle(s::AbstractSerializer, x)
         s.counter += 1
     end
     return false
+end
+
+function reset(s::AbstractSerializer)
+    s.counter = 0
+    s.table = ObjectIdDict()
+    s
 end
 
 serialize(s::AbstractSerializer, x::Bool) = x ? writetag(s.io, TRUE_TAG) :

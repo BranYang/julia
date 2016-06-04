@@ -77,6 +77,18 @@ type JoinCompleteMsg <: AbstractMsg
     ospid::Int
 end
 
+type ClusterSerializer{I<:IO} <: AbstractSerializer
+    io::I
+    counter::Int
+    table::ObjectIdDict
+
+    sent_objects::Dict # used by serialize (track objects sent)
+    recd_objects::Dict # used by deserialize (object cache)
+
+    ClusterSerializer(io::I) = new(io, 0, ObjectIdDict(), Dict(), Dict())
+end
+ClusterSerializer(io::IO) = ClusterSerializer{typeof(io)}(io)
+
 
 function send_msg_unknown(s::IO, msg)
     error("attempt to send to unknown socket")
@@ -157,6 +169,8 @@ type Worker
 
     r_stream::IO
     w_stream::IO
+    w_serializer::ClusterSerializer  # writes can happen from any task hence store the
+                                     # serializer as part of the Worker object
     manager::ClusterManager
     config::WorkerConfig
     version::Nullable{VersionNumber}  # Julia version of the remote process
@@ -166,6 +180,7 @@ type Worker
         w = Worker(id)
         w.r_stream = r_stream
         w.w_stream = buffer_writes(w_stream)
+        w.w_serializer = ClusterSerializer(w.w_stream)
         w.manager = manager
         w.config = config
         w.version = version
@@ -242,7 +257,8 @@ function send_msg_(w::Worker, msg, now::Bool)
     io = w.w_stream
     lock(io.lock)
     try
-        serialize(io, msg)
+        reset(w.w_serializer)
+        serialize(w.w_serializer, msg)  # io is wrapped in w_serializer
 
         if !now && w.gcflag
             flush_gc_msgs(w)
@@ -992,8 +1008,10 @@ end
 function message_handler_loop(r_stream::IO, w_stream::IO, incoming::Bool)
     try
         version = process_hdr(r_stream, incoming)
+        serializer = ClusterSerializer(r_stream)
         while true
-            msg = deserialize(r_stream)
+            reset(serializer)
+            msg = deserialize(serializer)
             # println("got msg: ", msg)
             handle_msg(msg, r_stream, w_stream, version)
         end
