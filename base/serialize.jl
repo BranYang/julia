@@ -747,6 +747,7 @@ function deserialize(s::AbstractSerializer, ::Type{TypeName})
     number = read(s.io, UInt64)
     name = deserialize(s)
     mod = deserialize(s)
+    record_new = nothing
     if haskey(known_object_data, number)
         tn = known_object_data[number]::TypeName
         name = tn.name
@@ -763,15 +764,16 @@ function deserialize(s::AbstractSerializer, ::Type{TypeName})
         mod = __deserialized_types__
         tn = ccall(:jl_new_typename_in, Ref{TypeName}, (Any, Any), name, mod)
         makenew = true
+        record_new = add_known_object
     end
     deserialize_cycle(s, tn)
-    deserialize_typename_body(s, tn, number, name, mod, makenew, add_known_object)
+    deserialize_typename_body(s, tn, number, name, mod, makenew, record_new)
     return tn
 end
 
 add_known_object(t, number) = (known_object_data[number] = t)
 
-function deserialize_typename_body(s::AbstractSerializer, tn, number, name, mod, makenew, record_fn)
+function deserialize_typename_body(s::AbstractSerializer, tn, number, name, mod, makenew, record_new)
     names = deserialize(s)
     super = deserialize(s)
     parameters = deserialize(s)
@@ -786,7 +788,6 @@ function deserialize_typename_body(s::AbstractSerializer, tn, number, name, mod,
         tn.primary = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Cint, Cint, Cint),
                            tn, super, parameters, names, types,
                            abstr, mutable, ninitialized)
-        record_fn(tn, number)
         ty = tn.primary
         ccall(:jl_set_const, Void, (Any, Any, Any), mod, name, ty)
         if !isdefined(ty,:instance)
@@ -795,6 +796,9 @@ function deserialize_typename_body(s::AbstractSerializer, tn, number, name, mod,
             end
         end
     end
+
+    record_new != nothing && record_new(tn, number)
+
     tag = Int32(read(s.io, UInt8)::UInt8)
     if tag != UNDEFREF_TAG
         mtname = handle_deserialize(s, tag)

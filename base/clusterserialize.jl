@@ -13,8 +13,9 @@ end
 ClusterSerializer(io::IO) = ClusterSerializer{typeof(io)}(io)
 
 function deserialize(s::ClusterSerializer, ::Type{TypeName})
-    number, complete_body_sent = deserialize(s)
-    if !complete_body_sent
+    number, full_body_sent = deserialize(s)
+    record_new = nothing
+    if !full_body_sent
         if !haskey(s.recd_objects, number)
             error("Expected object in cache. Not found.")
         else
@@ -29,19 +30,21 @@ function deserialize(s::ClusterSerializer, ::Type{TypeName})
         elseif isdefined(mod, name)
             tn = getfield(mod, name).name
             # TODO: confirm somehow that the types match
-            warn(mod, ":",name, "isdefined, need not have been serialized")
+            warn(mod, ":",name, " isdefined, need not have been serialized")
             name = tn.name
             mod = tn.module
             makenew = false
+            record_new = (t,n)->(s.recd_objects[n]=t)
         else
             name = gensym()
             mod = Serialization.__deserialized_types__
             tn = ccall(:jl_new_typename_in, Ref{TypeName}, (Any, Any), name, mod)
             makenew = true
+            record_new = (t,n)->(s.recd_objects[n]=t)
         end
     end
     Serialization.deserialize_cycle(s, tn)
-    complete_body_sent && Serialization.deserialize_typename_body(s, tn, number, name, mod, makenew, (t,n)->(s.recd_objects[n]=t))
+    full_body_sent && Serialization.deserialize_typename_body(s, tn, number, name, mod, makenew, record_new)
     return tn
 end
 
