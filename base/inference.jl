@@ -1515,7 +1515,7 @@ function typeinf_edge(method::Method, atypes::ANY, sparams::SimpleVector, needtr
         end
     end
     typeinf_loop(frame)
-    return (frame.linfo, frame.bestguess, frame.inferred)
+    return (frame.linfo, widenconst(frame.bestguess), frame.inferred)
 end
 
 function typeinf_edge(method::Method, atypes::ANY, sparams::SimpleVector, caller)
@@ -1717,7 +1717,7 @@ function typeinf_frame(frame)
                     rt = abstract_eval(stmt.args[1], s[pc], frame)
                     if tchanged(rt, frame.bestguess)
                         # new (wider) return type for frame
-                        frame.bestguess = widenconst(tmerge(frame.bestguess, rt))
+                        frame.bestguess = tmerge(frame.bestguess, rt)
                         for (caller, callerW) in frame.backedges
                             # notify backedges of updated type information
                             for caller_pc in callerW
@@ -1916,6 +1916,20 @@ function finish(me::InferenceState)
     end
     widen_all_consts!(me.linfo)
 
+    if (isa(me.bestguess,Const)) || (isType(me.bestguess) && isleaftype(me.bestguess))
+        if !ispure
+            ispure = true
+            for stmt in me.linfo.code
+                if !statement_effect_free(stmt, me)
+                    ispure = false; break;
+                end
+            end
+        end
+        if ispure
+            # TODO: use constant calling convention
+        end
+    end
+
     # finalize and record the linfo result
     me.inferred = true
 
@@ -1930,7 +1944,7 @@ function finish(me::InferenceState)
         compressedtree = ccall(:jl_compress_ast, Any, (Any,Any), me.linfo, me.linfo.code)
         me.linfo.code = compressedtree
     end
-    me.linfo.rettype = me.bestguess
+    me.linfo.rettype = widenconst(me.bestguess)
 
     if me.destination !== me.linfo
         out = me.destination
@@ -2197,34 +2211,40 @@ function is_pure_builtin(f::ANY)
     return false
 end
 
+function statement_effect_free(e::ANY, sv)
+    if isa(e,Expr) && e.head === :(=)
+        return !isa(e.args[1],GlobalRef) && effect_free(e.args[2], sv, false)
+    elseif isa(e,NewvarNode) || isa(e,GotoNode)
+        return true
+    end
+    return effect_free(e, sv, false)
+end
+
 # detect some important side-effect-free calls (allow_volatile=true)
 # and some affect-free calls (allow_volatile=false) -- affect_free means the call
 # cannot be affected by previous calls, except assignment nodes
 function effect_free(e::ANY, sv, allow_volatile::Bool)
-    if isa(e,Slot)
+    if isa(e,Slot) || isa(e,SSAValue) || isa(e,Number) || isa(e,AbstractString) || isa(e,Module) ||
+        isa(e,QuoteNode) || isa(e,Type) || isa(e,Tuple) ||
+        isa(e,LineNumberNode) || isa(e,LabelNode)
         return true
-    end
-    if isa(e,Symbol)
+    elseif isa(e,GlobalRef)
+        return (isdefined(e.mod, e.name) && (allow_volatile || isconst(e.mod, e.name)))
+    elseif isa(e,Symbol)
         return allow_volatile
-    end
-    if isa(e,Number) || isa(e,AbstractString) || isa(e,SSAValue) ||
-        isa(e,QuoteNode) || isa(e,Type) || isa(e,Tuple)
-        return true
-    end
-    if isa(e,GlobalRef)
-        return (isdefined(e.mod, e.name) &&
-                (allow_volatile || isconst(e.mod, e.name)))
     end
     if isa(e,Expr)
         e = e::Expr
-        if e.head === :static_typeof
+        head = e.head
+        if head === :static_typeof
             return true
         end
-        if e.head === :static_parameter
+        if head === :static_parameter || head === :meta || head === :line || head === :gotoifnot ||
+            head === :inbounds || head === :boundscheck
             return true
         end
         ea = e.args
-        if e.head === :call && !isa(e.args[1], SSAValue) && !isa(e.args[1], Slot)
+        if head === :call && !isa(e.args[1], SSAValue) && !isa(e.args[1], Slot)
             if is_known_call_p(e, is_pure_builtin, sv)
                 if !allow_volatile
                     if is_known_call(e, arrayref, sv) || is_known_call(e, arraylen, sv)
@@ -2257,7 +2277,7 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
             else
                 return false
             end
-        elseif e.head === :new
+        elseif head === :new
             if !allow_volatile
                 a = ea[1]
                 typ = widenconst(exprtype(a,sv))
@@ -2266,7 +2286,7 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
                 end
             end
             # fall-through
-        elseif e.head === :return
+        elseif head === :return
             # fall-through
         else
             return false
